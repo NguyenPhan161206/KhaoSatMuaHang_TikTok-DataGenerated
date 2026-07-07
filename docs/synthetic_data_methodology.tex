@@ -1,0 +1,406 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[utf8]{vietnam}
+\usepackage{amsmath,amssymb,mathtools}
+\usepackage{bm}
+\usepackage{geometry}
+\geometry{margin=2cm}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{setspace}
+\usepackage{hyperref}
+\usepackage{parskip}
+\usepackage{natbib}
+\usepackage{float}
+\usepackage{caption}
+\usepackage{subcaption}
+
+\onehalfspacing
+
+% Custom math commands for readability
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\V}{\mathbb{V}}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\N}{\mathcal{N}}
+\newcommand{\CDF}{\hat{F}}
+\newcommand{\CDFinv}{\hat{F}^{\,-1}}
+\newcommand{\diff}{\mathop{}\!\Delta}
+\newcommand{\abs}[1]{\lvert #1 \rvert}
+
+\title{Phụ lục: Phương pháp sinh dữ liệu tổng hợp và đánh giá chất lượng}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{Phương pháp sinh dữ liệu tổng hợp}
+
+\subsection{Bối cảnh và thách thức}
+
+Nghiên cứu khảo sát hành vi người tiêu dùng thế hệ Z trên TikTok Shop 
+thu thập được 66 phản hồi, trong đó chỉ 39 quan sát có dữ liệu đầy đủ 
+trên toàn bộ 49 biến Likert (thang đo 1--5). 
+Với quy mô mẫu nhỏ như vậy, các phân tích thống kê đa biến 
+như mô hình cấu trúc tuyến tính (SEM) hay phân tích nhân tố khẳng định (CFA) 
+sẽ có độ mạnh thống kê (statistical power) thấp, 
+dẫn đến nguy cơ cao mắc sai lầm loại II 
+(không bác bỏ giả thuyết khống khi nó sai). 
+
+Để khắc phục hạn chế này, chúng tôi áp dụng phương pháp sinh dữ liệu tổng hợp 
+(synthetic data generation) nhằm mở rộng tập dữ liệu lên 466 quan sát 
+(66 gốc + 400 tổng hợp), phục vụ cho các phân tích thăm dò 
+(exploratory analysis) và kiểm tra độ vững của mô hình (robustness check).
+
+\subsection{Lựa chọn phương pháp: Gaussian Copula kết hợp Conditional Bootstrap}
+
+Chúng tôi lựa chọn phương pháp \textbf{Gaussian Copula} kết hợp 
+\textbf{Conditional Bootstrap} dựa trên bốn lý do sau:
+
+\subsubsection{(1) Bảo toàn cấu trúc tương quan giữa các biến}
+
+Trong nghiên cứu hành vi, các khái niệm tiềm ẩn (constructs) như 
+``Mua bốc đồng'', ``Hối hận sau mua'', ``Ý định trả hàng'' 
+có mối tương quan chặt chẽ với nhau. 
+Nếu sinh dữ liệu từng cột riêng rẽ, cấu trúc tương quan này sẽ bị phá vỡ, 
+khiến dữ liệu tổng hợp mất đi ý nghĩa nghiên cứu.
+
+Gaussian Copula giải quyết vấn đề này bằng cách:
+\begin{enumerate}
+    \item Ước lượng ma trận tương quan $\bm{\Sigma}$ từ dữ liệu gốc
+    \item Sinh các mẫu từ phân phối chuẩn đa biến $\N(\bm{0}, \bm{\Sigma})$
+    \item Chiếu về phân phối gốc thông qua hàm phân phối tích lũy nghịch đảo
+\end{enumerate}
+
+Cụ thể, gọi $\CDF_j$ là hàm phân phối tích lũy (CDF) thực nghiệm 
+của biến $X_j$ và $\Phi$ là CDF của phân phối chuẩn hóa. 
+Quy trình chuyển đổi như sau:
+
+\begin{align}
+    U_{ij} &= \CDF_j(X_{ij})                    && \text{(chuyển về phân phối đều)}   \label{eq:uniform} \\
+    Z_{ij} &= \Phi^{-1}(U_{ij})                  && \text{(chuyển về phân phối chuẩn)} \label{eq:normal} \\
+    \bm{\Sigma} &= \operatorname{Corr}(\bm{Z})   && \text{(ma trận tương quan)}         \label{eq:corr} \\
+    \bm{Z}_{\text{new}} &\sim \N(\bm{0}, \bm{\Sigma}) && \text{(sinh mẫu mới)}          \label{eq:sampling} \\
+    \bm{U}_{\text{new}} &= \Phi(\bm{Z}_{\text{new}})  && \text{(quay về phân phối đều)} \label{eq:back} \\
+    X_{ij}^{\text{(new)}} &= \CDFinv_j\bigl(U_{ij}^{\text{(new)}}\bigr) && \text{(chiếu về phân phối gốc)} \label{eq:inverse}
+\end{align}
+
+Vì dữ liệu Likert là rời rạc (discrete), chúng tôi sử dụng kỹ thuật 
+``jittering'' — thêm nhiễu ngẫu nhiên vào các giá trị trùng 
+trong quá trình ước lượng CDF — để tránh hiện tượng 
+các giá trị bằng nhau gây ra ma trận tương quan suy biến.
+
+\subsubsection{(2) Bảo toàn phân phối xác suất của từng biến}
+
+Khác với các phương pháp tham số (parametric) giả định phân phối chuẩn, 
+Gaussian Copula sử dụng CDF thực nghiệm (empirical CDF), 
+cho phép tái tạo chính xác mọi dạng phân phối — 
+kể cả phân phối lệch (skewed) hay đa mode. 
+Điều này đặc biệt quan trọng vì dữ liệu Likert trong nghiên cứu 
+thường có phân phối lệch trái hoặc lệch phải.
+
+\subsubsection{(3) Tôn trọng cấu trúc logic của bảng hỏi}
+
+Khảo sát có cấu trúc nhánh (skip logic): 
+người chưa từng mua hàng qua livestream (``Chưa'') 
+sẽ không trả lời các câu hỏi về cảm nhận sau mua, 
+dẫn đến dữ liệu khuyết (missing) có hệ thống.
+
+Chúng tôi kết hợp Conditional Bootstrap để xử lý:
+\begin{itemize}
+    \item Tính tỷ lệ ``Có'' / ``Chưa'' từ 66 mẫu gốc ($78\%$ -- $22\%$)
+    \item Sinh 310 dòng ``Có'' từ Gaussian Copula (đầy đủ 49 biến Likert)
+    \item Sinh 90 dòng ``Chưa'' từ Bootstrap thuần túy (\texttt{NaN} ở 49 biến Likert)
+\end{itemize}
+
+Phương pháp này đảm bảo dữ liệu tổng hợp không vi phạm logic 
+nội tại của bảng hỏi và giữ nguyên tỷ lệ tổng thể.
+
+\subsubsection{(4) Khả năng mở rộng với cỡ mẫu nhỏ}
+
+Với chỉ 39 quan sát hoàn chỉnh, các phương pháp sinh dữ liệu 
+phức tạp hơn như mô hình sinh sâu (deep generative models — 
+GAN, VAE, diffusion models) không khả thi do thiếu dữ liệu huấn luyện. 
+Gaussian Copula chỉ yêu cầu ước lượng:
+\begin{itemize}
+    \item Các phân phối biên (marginal distributions) — 39 điểm đủ cho CDF thực nghiệm
+    \item Ma trận tương quan — với 49 biến, cần ít nhất 
+    $\frac{49 \times 50}{2} = 1225$ tham số, nhưng với 39 mẫu, 
+    ta bị underdetermined (ít mẫu hơn số tham số)
+\end{itemize}
+
+Hạn chế về cỡ mẫu được giải quyết bằng cách regularize ma trận tương quan 
+(phương trình~\ref{eq:regularize}):
+
+\begin{equation}
+    \bm{\Sigma}_{\text{reg}} = \bm{\Sigma} + \lambda \bm{I}, 
+    \qquad \lambda = \max\!\bigl(-\lambda_{\min}(\bm{\Sigma}),\,0\bigr) + \varepsilon
+    \label{eq:regularize}
+\end{equation}
+
+trong đó $\varepsilon = 10^{-6}$ là hằng số điều chỉnh nhằm đảm bảo 
+ma trận $\bm{\Sigma}_{\text{reg}}$ xác định dương (positive definite).
+
+\subsection{Tổng quan quy trình}
+
+Bảng~\ref{tab:pipeline} tóm tắt toàn bộ quy trình xử lý:
+
+\begin{table}[H]
+\centering
+\caption{Quy trình sinh dữ liệu tổng hợp}
+\label{tab:pipeline}
+\begin{tabular}{cll}
+\toprule
+Bước & Xử lý & Chi tiết \\
+\midrule
+1 & Tiền xử lý & Làm sạch, rename cột, loại bỏ chuỗi rỗng \\
+2 & Tách nhóm & 39 dòng đầy đủ (nhóm Copula) + 27 dòng khuyết \\
+3 & Ước lượng & Phân phối biên + Ma trận tương quan từ 39 dòng \\
+4 & Copula & Sinh 400 mẫu MVN, chiếu về Likert 1--5 \\
+5 & Bootstrap & Sinh categorical theo tỷ lệ gốc (310 Có / 90 Chưa) \\
+6 & Kiểm định & KS test, so sánh tương quan, phân phối tần số \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\newpage
+\section{Đánh giá chất lượng bộ dữ liệu tổng hợp}
+
+\subsection{Kết quả kiểm định}
+
+Chúng tôi thực hiện bốn nhóm kiểm định để đánh giá chất lượng 
+của 400 dòng dữ liệu tổng hợp so với 39 dòng gốc hoàn chỉnh:
+
+\subsubsection{Kiểm định Kolmogorov--Smirnov (KS test)}
+
+Kết quả KS test 2-mẫu trên từng cột Likert cho thấy:
+
+\begin{table}[H]
+\centering
+\caption{Kết quả KS test trên 49 biến Likert}
+\label{tab:kstest}
+\begin{tabular}{lcc}
+\toprule
+Chỉ số & Giá trị & Đánh giá \\
+\midrule
+Số cột PASS ($p > 0{,}05$) & 49/49 & Xuất sắc \\
+Mean KS statistic & 0,034 & Rất thấp \\
+Min KS statistic & 0,009 & --- \\
+Max KS statistic & 0,089 & --- \\
+Mean $p$-value & 0,998 & --- \\
+Min $p$-value & 0,924 & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Với $100\%$ số cột vượt qua KS test ở mức ý nghĩa $5\%$, 
+phân phối của các biến Likert tổng hợp là đồng nhất về mặt thống kê 
+với phân phối gốc. 
+
+\subsubsection{Sai lệch tham số thống kê}
+
+\begin{table}[H]
+\centering
+\caption{Sai lệch tham số giữa dữ liệu gốc và tổng hợp}
+\label{tab:param}
+\begin{tabular}{lccc}
+\toprule
+Tham số & $\operatorname{Mean}\abs{\diff}$ & Giá trị lớn nhất & Đánh giá \\
+\midrule
+Trung bình (Mean) & 0,061 & 0,181 (thang 1--5) & Tốt \\
+Độ lệch chuẩn (Std) & 0,036 & 0,106 & Rất tốt \\
+Trung vị (Median) & 0,010 & 0,500 & Rất tốt \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Sai lệch trung bình $0{,}061$ trên thang đo 5 điểm tương đương 
+$1{,}5\%$ toàn thang đo. 
+Đây là mức sai lệch chấp nhận được với cỡ mẫu gốc nhỏ ($n = 39$).
+
+\subsubsection{Bảo toàn cấu trúc tương quan}
+
+Bảng~\ref{tab:corr} so sánh ma trận tương quan của 49 biến Likert:
+
+\begin{table}[H]
+\centering
+\caption{So sánh ma trận tương quan}
+\label{tab:corr}
+\begin{tabular}{lcc}
+\toprule
+Chỉ số & Giá trị & Đánh giá \\
+\midrule
+$\operatorname{Mean}\abs{\diff}$ (toàn bộ) & 0,136 & Chấp nhận được \\
+$\operatorname{Mean}\abs{\diff}$ (off-diagonal) & 0,139 & Chấp nhận được \\
+Độ lệch chuẩn của $\diff$ (off-diagonal) & 0,075 & --- \\
+$\max\abs{\diff}$ & 0,383 & --- \\
+$\mathrm{Q}_{25}$ của $\diff$ & 0,084 & --- \\
+$\mathrm{Q}_{75}$ của $\diff$ & 0,193 & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Phân tích các điểm yếu và hệ quả}
+
+Mặc dù kết quả KS test và sai lệch tham số ở mức tốt, 
+chúng tôi ghi nhận ba điểm yếu cần phân tích:
+
+\subsubsection{Điểm yếu 1: Suy giảm tương quan nội bộ nhóm}
+
+Ma trận tương quan trung bình trong từng nhóm biến 
+(in-group correlation) có sự suy giảm đáng kể.
+
+\begin{table}[H]
+\centering
+\caption{So sánh tương quan trung bình trong từng nhóm}
+\label{tab:groupcorr}
+\begin{tabular}{lccc}
+\toprule
+Nhóm & Gốc ($r$) & Tổng hợp ($r$) & Chênh lệch \\
+\midrule
+Chất lượng thông tin & 0,715 & 0,505 & $-0{,}210$ \\
+Tương tác Streamer & 0,604 & 0,393 & $-0{,}211$ \\
+KOL/KOC & 0,760 & 0,584 & $-0{,}176$ \\
+Dòng chảy/Cuốn hút & 0,766 & 0,627 & $-0{,}138$ \\
+Mua bốc đồng & 0,705 & 0,571 & $-0{,}135$ \\
+Hối hận sau mua & 0,650 & 0,477 & $-0{,}173$ \\
+Ý định trả hàng & 0,754 & 0,531 & $-0{,}223$ \\
+Truyền miệng tiêu cực & 0,625 & 0,496 & $-0{,}129$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Nguyên nhân:} 
+Hiện tượng suy giảm tương quan nội bộ nhóm (gọi là ``correlation shrinkage'') 
+bắt nguồn từ việc ma trận tương quan được ước lượng trên 
+chỉ 39 quan sát. Với $p = 49$ biến, số tham số cần ước lượng là 
+$p(p-1)/2 = 1176$, trong khi chỉ có 39 mẫu, dẫn đến 
+tình trạng ``underdetermined'' — số tham số vượt xa số quan sát.
+Ma trận tương quan ước lượng được có phương sai lớn 
+và một số trị riêng bằng $0$ (singular). 
+Mặc dù đã regularize (phương trình~\ref{eq:regularize}), 
+quá trình sinh mẫu từ copula không thể tái tạo hoàn hảo 
+các tương quan cao do thiếu thông tin.
+
+\textbf{Hệ quả đối với nghiên cứu:}
+
+\begin{enumerate}
+    \item \textbf{Hệ số Cronbach's Alpha bị ước lượng thấp hơn thực tế:}
+    Vì $\alpha$ phụ thuộc trực tiếp vào tương quan trung bình giữa các biến 
+    trong cùng một thang đo, dữ liệu tổng hợp sẽ cho giá trị $\alpha$ 
+    thấp hơn so với thực tế. Điều này có thể dẫn đến kết luận sai lầm rằng 
+    thang đo không đạt độ tin cậy (ngưỡng thường là $\alpha > 0{,}7$), 
+    trong khi thực tế thang đo hoàn toàn tốt.
+    
+    \item \textbf{Phương sai trích trung bình (AVE) bị suy giảm:}
+    Trong phân tích CFA và PLS-SEM, AVE được tính từ các trọng số nhân tố 
+    (factor loadings). Khi tương quan nội bộ suy giảm, 
+    các trọng số nhân tố cũng giảm theo, kéo AVE xuống dưới ngưỡng $0{,}5$.
+    Điều này có thể khiến nhà nghiên cứu kết luận 
+    ``giá trị hội tụ (convergent validity) không đạt'' 
+    trong khi thực tế giá trị hội tụ là đạt yêu cầu.
+    
+    \item \textbf{Hệ số hồi quy giữa các nhân tố bị thiên lệch:}
+    Trong mô hình SEM, tương quan giữa các nhân tố 
+    (inter-construct correlation) được bảo toàn tốt hơn tương quan nội bộ, 
+    nhưng khi AVE bị suy giảm, các hệ số đường dẫn (path coefficients) 
+    trong mô hình cấu trúc có thể bị ước lượng với sai số lớn hơn.
+    Các kiểm định giả thuyết (hypothesis testing) dựa trên 
+    bootstrap confidence interval trong PLS-SEM vẫn có giá trị 
+    tham khảo nhưng cần thận trọng khi diễn giải.
+\end{enumerate}
+
+\textbf{Khuyến nghị giảm thiểu:}
+\begin{itemize}
+    \item Sử dụng dữ liệu tổng hợp chủ yếu cho phân tích thăm dò 
+    (exploratory factor analysis — EFA) và kiểm tra độ vững.
+    \item Khi đánh giá độ tin cậy thang đo trên dữ liệu tổng hợp, 
+    cần điều chỉnh kỳ vọng: chấp nhận ngưỡng $\alpha < 0{,}7$ 
+    nếu dữ liệu gốc cho thấy thang đo tốt.
+    \item \textbf{KHÔNG} sử dụng dữ liệu tổng hợp để thay thế dữ liệu gốc 
+    trong các kiểm định giả thuyết chính thức (confirmatory analysis). 
+    Dữ liệu tổng hợp chỉ nên dùng để tăng cường (augment) 
+    chứ không thay thế dữ liệu thật.
+\end{itemize}
+
+\subsubsection{Điểm yếu 2: Sai lệch có hệ thống ở một số biến}
+
+Một số biến có sai lệch trung bình lớn hơn $0{,}15$ 
+(\texttt{Regret\_Purchase\_Decision}: $0{,}18$; 
+\texttt{Frequent\_Unplanned\_Purchases}: $0{,}17$; 
+\texttt{See\_Buy\_Behavior}: $0{,}17$). 
+Các biến này đều thuộc nhóm ``Mua bốc đồng'' và ``Hối hận sau mua''.
+
+\textbf{Nguyên nhân:} 
+Các biến này có phân phối lệch (skewed) mạnh và 
+phương sai lớn trong dữ liệu gốc ($\sigma > 1{,}3$), 
+khiến CDF thực nghiệm kém ổn định hơn so với các biến 
+có phương sai nhỏ. Với 39 mẫu, 
+các giá trị ngoại lệ (outliers) có ảnh hưởng lớn đến 
+hình dạng phân phối.
+
+\textbf{Hệ quả:}
+\begin{itemize}
+    \item Các phân tích mô tả (descriptive statistics) trên dữ liệu tổng hợp 
+    sẽ có sai số nhỏ nhưng có hệ thống ở các biến này.
+    \item Trong mô hình hồi quy, nếu các biến này là biến phụ thuộc,
+    ước lượng hệ số có thể bị chệch.
+    \item Tuy nhiên, với $\abs{\diff_{\text{mean}}} = 0{,}18$ trên thang 5 điểm, 
+    sai lệch này vẫn nằm trong khoảng $\pm 0{,}5$ điểm — 
+    không làm thay đổi ý nghĩa thực tiễn của kết quả 
+    (ví dụ: mean gốc $3{,}0$ ``trung bình'' vẫn là mean tổng hợp $2{,}82$ ``trung bình'').
+\end{itemize}
+
+\subsubsection{Điểm yếu 3: Không bắt được cấu trúc đa mode hiếm}
+
+Với 39 mẫu, CDF thực nghiệm có độ phân giải thấp. 
+Nếu một giá trị Likert chỉ xuất hiện 1--2 lần trong 39 mẫu, 
+thì CDF thực nghiệm ước lượng xác suất của nó với sai số lớn. 
+Copula sinh ra phân phối trơn (smooth) hơn, 
+làm mất các mode hiếm.
+
+Ví dụ: nếu giá trị ``5'' xuất hiện $2/39 \approx 5\%$ trong dữ liệu gốc, 
+Copula có thể sinh ra nó với tần suất $3$--$8\%$ 
+(sai số tương đối đến $60\%$).
+
+\textbf{Hệ quả:}
+\begin{itemize}
+    \item Các biến có ít giá trị ngoại cùng (ceiling/floor effects) 
+    sẽ bị tái tạo kém chính xác nhất.
+    \item Khi dùng dữ liệu tổng hợp để nghiên cứu 
+    hành vi cực đoan (ví dụ: người rất hối hận với score 5 ở mọi biến), 
+    cần kiểm tra lại bằng dữ liệu gốc.
+    \item Đây là hạn chế cố hữu của mọi phương pháp tham số hóa 
+    với cỡ mẫu nhỏ, không riêng gì Copula.
+\end{itemize}
+
+\subsection{Kết luận về chất lượng}
+
+\begin{table}[H]
+\centering
+\caption{Đánh giá tổng thể chất lượng dữ liệu tổng hợp}
+\label{tab:summary}
+\begin{tabular}{lp{6cm}p{4cm}}
+\toprule
+Tiêu chí & Kết quả & Mức độ \\
+\midrule
+Phân phối đơn biến & KS test: 49/49 PASS ($p > 0{,}05$) & Xuất sắc \\
+Sai lệch trung bình & $\operatorname{Mean}\abs{\diff} = 0{,}061$ ($1{,}5\%$ thang đo) & Tốt \\
+Sai lệch độ lệch chuẩn & $\operatorname{Mean}\abs{\diff} = 0{,}036$ & Rất tốt \\
+Tương quan giữa nhóm & $\operatorname{Mean}\abs{\diff} = 0{,}10$--$0{,}15$ & Khá \\
+Tương quan trong nhóm & Giảm $13$--$22\%$ so với gốc & Yếu \\
+Skip logic & $100\%$ chính xác & Xuất sắc \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Dữ liệu tổng hợp đạt chất lượng \textbf{chấp nhận được} 
+cho các phân tích thăm dò (EFA, độ vững mô hình) 
+nhưng \textbf{không thay thế} dữ liệu gốc trong các kiểm định 
+giả thuyết chính thức. 
+Điểm yếu chính là suy giảm tương quan nội bộ nhóm 
+do cỡ mẫu gốc quá nhỏ ($n = 39$), 
+dẫn đến nguy cơ đánh giá thấp độ tin cậy thang đo. 
+Khuyến nghị sử dụng dữ liệu tổng hợp như một công cụ hỗ trợ 
+(tăng cường, kiểm tra độ vững), không phải nguồn dữ liệu chính thức.
+
+\end{document}
